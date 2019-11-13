@@ -1,0 +1,8 @@
+data/candal_data/*.png
+data/ground_truth/*.png
+data/original_data/*.png
+data/predict/*.png
+data/ground_truth/*.avi
+data/predict/*.avi
+data/__pycache__/*.pyc
+*.h5
