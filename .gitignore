@@ -6,3 +6,5 @@ data/ground_truth/*.avi
 data/predict/*.avi
 data/__pycache__/*.pyc
 *.h5
+data/smoke_pos21_size5_f200/v/*.npz
+__pycache__/*.cpython-37.pyc

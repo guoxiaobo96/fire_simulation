@@ -49,20 +49,44 @@ class BatchManager(object):
         
         feature_dim = [self.res_y, self.res_x, self.depth]
         
-        if 'ae' in config.arch:
-            self.dof = int(self.args['num_dof'])
-            label_dim = [self.dof, int(self.args['num_frames'])]
-        else:
-            label_dim = [self.c_num]
+        r = np.loadtxt(os.path.join(self.root, self.data_type[0]+'_range.txt'))
+        self.x_range = max(abs(r[0]), abs(r[1]))
+        self.y_range = []
+        self.y_num = []
+        for i in range(self.c_num):
+                p_name = self.args['p%d' % i]
+                p_min = float(self.args['min_{}'.format(p_name)])
+                p_max = float(self.args['max_{}'.format(p_name)])
+                p_num = int(self.args['num_{}'.format(p_name)])
+                self.y_range.append([p_min, p_max])
+                self.y_num.append(p_num)
+
+        # if 'ae' in config.arch:
+        #     self.dof = int(self.args['num_dof'])
+        #     label_dim = [self.dof, int(self.args['num_frames'])]
+        # else:
+        #     label_dim = [self.c_num]
         
-def preprocess(file_path, data_type, x_range, y_range):
-    with np.load(file_path) as data:
-        x = data["x"]
-        y = data["y"]
-    if data_type[0] == 'd':
-        x = x * 2 - 1
-    else:
-        x /= x_range
-    for i, ri in enumerate(y_range):
-        y[i] = (y[i] - ri[0]) / (ri[1] - ri[0]) * 2 - 1
-    return x, y
+    def build_dataset(self):
+        train_dataset_x = tf.data.Dataset.from_generator(self._load_image,tf.float16)
+        train_dataset_y = tf.data.Dataset.from_generator(self._load_label,tf.float16)
+        train_dataset = tf.data.Dataset.zip((train_dataset_x, train_dataset_y))
+        train_dataset = train_dataset.batch(self.batch_size)
+        return train_dataset
+        
+    def _load_image(self):
+        for f in self.paths:
+            if f.endswith('npz'):
+                with np.load(f) as data:
+                    x = data["x"] / self.x_range
+                    yield data["x"]
+        
+    def _load_label(self):
+        for f in self.paths:
+            if f.endswith('npz'):
+                with np.load(f) as data:
+                    y = data["y"]
+                    for i, ri in enumerate(self.y_range):
+                        y[i] = (y[i] - ri[0]) / (ri[1] - ri[0]) * 2 - 1
+                    yield y
+
