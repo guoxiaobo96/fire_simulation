@@ -1,5 +1,5 @@
 import tensorflow as tf
-from tensorflow.python import keras
+from tensorflow import keras
 import time
 import numpy as np
 import os
@@ -30,8 +30,7 @@ class Trainer(object):
         self.num_conv = config.num_conv
         self.w1 = config.w1
         self.w2 = config.w2
-        if 'dg' in self.arch:
-            self.w3 = config.w3
+        self.w3 = config.w3
 
         self.use_c = config.use_curl
         self.output_shape = [self.res_y,self.res_x,1]
@@ -112,9 +111,9 @@ class Trainer(object):
             input_gradient, input_vort = jacobian(input_velocity)
             generated_gradient, generated_vort = jacobian(generated_velocity)
             disc_real_output = self.discriminator(tf.concat([input_velocity, input_vort],axis=-1),training=True)
-            disc_generated_output = self.discriminator(tf.concat([generated_velocity, generated_velocity],axis=-1),training=True)
+            disc_generated_output = self.discriminator(tf.concat([generated_velocity, generated_gradient],axis=-1),training=True)
 
-            gen_loss = self._generator_loss(generated_velocity, target_velocity, disc_generated_output)
+            gen_loss = self._generator_loss(generated_velocity, input_velocity, disc_generated_output)
             disc_loss = self._discriminator_loss(disc_real_output,disc_generated_output)
         
         generator_gradients = gen_tape.gradient(gen_loss,
@@ -123,9 +122,9 @@ class Trainer(object):
                                                     self.discriminator.trainable_variables)
 
         self._generator_optimizer.apply_gradients(zip(generator_gradients,
-                                                generator.trainable_variables))
+                                                self.generator.trainable_variables))
         self._discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
-                                                    discriminator.trainable_variables))
+                                                    self.discriminator.trainable_variables))
 
 
     def build_dataset(self):
@@ -164,9 +163,8 @@ class Trainer(object):
         real_gradient, _ = jacobian(real_velocity)
         gradient_loss = tf.reduce_mean(tf.abs(generated_gradient - real_gradient))
         total_loss = self.w1 * velocity_loss + self.w2 * gradient_loss
-        if disc_generated_output:
-            gan_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_generated_output), disc_generated_output, from_logits=True)
-            total_loss += self.w3 * gan_loss
+        gan_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_generated_output), disc_generated_output, from_logits=True)
+        total_loss += self.w3 * gan_loss
         return total_loss
 
 def main():
