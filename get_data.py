@@ -1,5 +1,6 @@
-import tensorflow as tf
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import tensorflow as tf
 import numpy as np
 
 def read_frame(frame_path):
@@ -11,7 +12,7 @@ def read_frame(frame_path):
 def build_data(source_frame, target_frame):
     souce = None
     target_frame = read_frame(target_frame)
-    return source, target_frame
+    return source_frame, target_frame
 
 
 def get_data(source_frame, target_frame, batch_size, shuffle=False):

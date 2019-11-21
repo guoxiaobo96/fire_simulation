@@ -1,9 +1,10 @@
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import tensorflow as tf
 from tensorflow.python import keras
 import numpy as np
+from util import *
 
-tf.keras.backend.set_floatx('float16')
 
 def build_discriminator(filter, repeat_num=3):
     filter = int(filter / 2)
@@ -32,7 +33,7 @@ class Generator(keras.Model):
         self.dense = keras.layers.Dense(int(np.prod(self.x0_shape)))
 
         self.conv2dTransose_1 = keras.layers.Conv2DTranspose(filters, kernel_size=2, strides=1)
-        self.conv2dTransose_2 = keras.layers.Conv2DTranspose(filters, kernel_size=2, strides=2)
+        self.conv2dTransose_2 = keras.layers.Conv2DTranspose(filters, kernel_size=2, strides=2, padding='same')
 
         self.conv2d = keras.layers.Conv2D(filters, kernel_size=kernel_size, strides=1, padding='same')
         self.conv2d_last = keras.layers.Conv2DTranspose(output_shape[-1], kernel_size=last_kernel_size, strides=1,padding='same')
@@ -49,18 +50,21 @@ class Generator(keras.Model):
                 x = self.conv2d(x)
                 x = self.LeakyRelu(x)
             if idx < self.repeat_num - 1:
+                _,h,w,_ = x.get_shape().as_list()
                 if self.concat:
-                    x = self.conv2dTransose_2(x)
-                    x_0 = self.conv2dTransose_2(x_0)
+                    x = tf.image.resize(x,[h*2,w*2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
+                    x_0 = tf.image.resize(x_0,[h*2,w*2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
                     x = tf.concat([x, x_0], axis=-1)
                 else:
                     x += x_0
-                    x = self.conv2dTransose_2(x)
+                    x = tf.image.resize(x,[h*2,w*2],method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
                     x_0 = x
             elif not self.concat:
                 x += x_0
-        out_put = self.conv2d_last(x)
-        return out_put
+        x = self.conv2d_last(x)
+        x = curl(x)
+
+        return x
 
 def build_NN(filters, out_num, dropout_rate=0.1, train=True):
     model = keras.Sequential()
