@@ -1,7 +1,8 @@
-import cv2
-import tensorflow as tf
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+import tensorflow as tf
 import numpy as np
+import cv2
 
 
 def video2frame(video_path, frame_path):
@@ -41,5 +42,24 @@ def image2np(data_path):
 def main():
     video2frame('e:/videoplayback.mp4','./data')
 
+def convert_data(data_file, p1_list, p2_list,p3_list, frame_list):
+    for p1 in p1_list:
+        for p2 in p2_list:
+            for p3 in p3_list:
+                frame = frame_list[-1]
+                file_path = p1+"_"+p2+"_"+p3+"_"+frame+".npz"
+                file_path = os.path.join(data_file,file_path)
+                exist_data = np.load(file_path)["x"]
+                    
+                next_frame = p1 + "_" + p2 + "_" +p3+"_"+str(int(frame)) + ".npz"
+                next_frame_path = os.path.join(data_file, next_frame)
+                next_frame = np.load(next_frame_path)["x"]
+
+                new_data = np.savez_compressed(file_path, x=exist_data, y=next_frame, z=np.array([int(p1), int(p2), int(p3),int(frame)]))
+                    
 if __name__ == '__main__':
-    main()
+    p1_list = [str(i) for i in range(5)]
+    p2_list = [str(i) for i in range(11)]
+    p3_list = [str(i) for i in range(11)]
+    frame_list = [str(i) for i in range(200)]
+    convert_data("data/fire_2d/v", p1_list, p2_list, p3_list, frame_list)

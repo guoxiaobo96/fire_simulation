@@ -1,12 +1,17 @@
-import tensorflow as tf
-from tensorflow import keras
-import time
-import numpy as np
-import os
-from config import get_config
-from model import Generator, build_discriminator
-from data import BatchManager
+from show_result import *
 from util import *
+from data import BatchManager
+from model import Generator_v_de, build_discriminator_v
+from config import get_config
+from tqdm import tqdm
+import glob
+import numpy as np
+import time
+from tensorflow import keras
+import tensorflow as tf
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 
 class Trainer(object):
     def __init__(self, config, batch_manager):
@@ -33,33 +38,34 @@ class Trainer(object):
         self.w3 = config.w3
 
         self.use_c = config.use_curl
-        self.output_shape = [self.res_y,self.res_x,1]
+        self.output_shape = [self.res_y, self.res_x, 1]
 
         self.optimizer = config.optimizer
         self.beta1 = config.beta1
         self.beta2 = config.beta2
-                
+
         self.model_dir = config.model_dir
         self.load_path = config.load_path
 
-
         self.lr_update = config.lr_update
-        if self.lr_update == 'decay':
-            lr_min = config.lr_min
-            lr_max = config.lr_max
-            self.g_lr = tf.Variable(lr_max, name='g_lr',dtype=tf.float16)
-        elif self.lr_update == 'step':
-            self.g_lr = tf.Variable(config.lr_max, name='g_lr', dtype=tf.float16)
-        else:
-            raise Exception("[!] Invalid lr update method")
+        self.g_lr = tf.Variable(config.lr_max, name='g_lr')
+        self.lr_min = config.lr_min
+        self.lr_max = config.lr_max
 
         self.lr_update_step = config.lr_update_step
         self.log_step = config.log_step
         self.test_step = config.test_step
-        self.save_sec = config.save_sec
 
         self.is_train = config.is_train
-        if 'ae' in self.arch:
+
+        self.num_samples = batch_manager.num_samples
+        self.max_step = int(config.max_epoch // batch_manager.epochs_per_step)
+        self.max_epoch = config.max_epoch
+        if 'v_de' in self.arch:
+            self.build_model_v_de()
+        elif 'v_gan' in self.arch:
+            pass
+        elif 'ae' in self.arch:
             self.z_num = config.z_num
             self.p_num = self.batch_manager.dof
             self.use_sparse = config.use_sparse
@@ -69,109 +75,178 @@ class Trainer(object):
             self.code_path = config.code_path
             self.build_model_ae()
 
-        elif 'nn' in self.arch:
-            self.z_num = config.z_num
-            self.w_num = config.w_size
-            self.p_num = self.batch_manager.dof
-            self.build_model_nn()
-
         else:
             self.build_model()
 
-        # r = np.loadtxt(os.path.join(self.root, +'v_range.txt'))
-        # self.x_range = max(abs(r[0]), abs(r[1]))
-            
-    def build_model(self):
-        self.generator = Generator(self.filters, self.output_shape, num_cov=self.num_conv, repeat_num=self.repeat_num)
-        self.discriminator = build_discriminator(self.filters)
+
+    def build_model_v_de(self):
+        self.generator = Generator_v_de(
+            self.filters, self.output_shape, num_cov=self.num_conv, repeat_num=self.repeat_num)
 
         if self.optimizer == 'adam':
-            self._generator_optimizer = keras.optimizers.Adam(lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
-            self._discriminator_optimizer = keras.optimizers.Adam(lr=self.g_lr,beta_1=self.beta1,beta_2=self.beta2)
+            self._generator_optimizer = keras.optimizers.Adam(
+                lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
         elif self.optimizer == 'gd':
             self._generator_optimizer = keras.optimizers.SGD(lr=self.g_lr)
-            self._discriminator_optimizer = keras.optimizers.Adam(lr=self.g_lr,beta_1=self.beta1,beta_2=self.beta2)
+
         else:
             raise Exception("[!] Invalid opimizer")
-    
-    def fit(self):
-        train_ds = self.build_dataset()
-        for epoch in range(5):
-            start_time = time.time()
-            for x,y in train_ds:
-                self.train_(x, y)
-            print ('Time taken for epoch {} is {} sec\n'.format(epoch + 1,
-                                                        time.time()-start_time))
+        checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
+        self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        self.checkpoint = tf.train.Checkpoint(generator_optimizer=self._generator_optimizer,
+                                              generator=self.generator)
+        self.summary_writer = tf.summary.create_file_writer(self.model_dir)
+
+    def build_model_v_gan(self):
+        self.generator = Generator_v_de(
+            self.filters, self.output_shape, num_cov=self.num_conv, repeat_num=self.repeat_num)
+        self.discriminator = build_discriminator_v(self.filters)
+
+        if self.optimizer == 'adam':
+            self._generator_optimizer = keras.optimizers.Adam(
+                lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
+            self._discriminator_optimizer = keras.optimizers.Adam(
+                lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
+        elif self.optimizer == 'gd':
+            self._generator_optimizer = keras.optimizers.SGD(lr=self.g_lr)
+            self._discriminator_optimizer = keras.optimizers.Adam(
+                lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
+        else:
+            raise Exception("[!] Invalid opimizer")
+
+        checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
+        self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
+        self.checkpoint = tf.train.Checkpoint(generator_optimizer=self._generator_optimizer,
+                                              discriminator_optimizer=self._discriminator_optimizer,
+                                              generator=self.generator,
+                                              discriminator=self.discriminator)
+        self.summary_writer = tf.summary.create_file_writer(self.model_dir)
 
 
-    # @tf.function
-    def train_(self, input_velocity, target_velocity):
-        with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-            generated_velocity = curl(self.generator(target_velocity))
-            input_gradient, input_vort = jacobian(input_velocity)
-            generated_gradient, generated_vort = jacobian(generated_velocity)
-            disc_real_output = self.discriminator(tf.concat([input_velocity, input_vort],axis=-1),training=True)
-            disc_generated_output = self.discriminator(tf.concat([generated_velocity, generated_gradient],axis=-1),training=True)
+    def fit_v_de(self):
+        train_ds = self.build_dataset_train()
+        xi, _, _ ,zi = self.batch_manager.random_list(self.b_num)
+        standard_velocity = tf.convert_to_tensor(xi, tf.float32)
+        generator_input = tf.convert_to_tensor(zi, tf.float32)
 
-            gen_loss = self._generator_loss(generated_velocity, input_velocity, disc_generated_output)
-            disc_loss = self._discriminator_loss(disc_real_output,disc_generated_output)
+        build_image_from_tensor(denorm_img(
+            standard_velocity).numpy(), self.model_dir, 'standard')
+
+        self.validate(tf.cast(0, tf.int64), standard_velocity, generator_input)
         
-        generator_gradients = gen_tape.gradient(gen_loss,
-                                          self.generator.trainable_variables)
-        discriminator_gradients = disc_tape.gradient(disc_loss,
-                                                    self.discriminator.trainable_variables)
+        for step in tqdm(range(self.max_step), ncols=70):
+            target_velocity, _, generator_input = next(train_ds)
+            self.train_v_de(target_velocity, generator_input, tf.cast(step,dtype=tf.int64))
 
-        self._generator_optimizer.apply_gradients(zip(generator_gradients,
-                                                self.generator.trainable_variables))
-        self._discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
-                                                    self.discriminator.trainable_variables))
+            if step % self.test_step == 0 or step == self.max_step - 1:
+                self.validate(tf.cast(step, tf.int64),standard_velocity,generator_input)
+
+            if self.lr_update == 'step':
+                if step % self.lr_update_step == self.lr_update_step - 1:
+                    tf.compat.v1.assign(self.g_lr, tf.maximum(
+                        self.g_lr * 0.5, self.lr_min))
+            else:
+                tf.compat.v1.assign(self.g_lr, self.lr_min+0.5*(self.lr_max-self.lr_min)*(tf.cos(
+                    tf.cast(step, tf.float32)*np.pi/self.max_step)+1))
+
+            if step % self.log_step == self.log_step - 1 or step==self.max_step - 1:
+                self.checkpoint.save(file_prefix=self.checkpoint_prefix)
 
 
-    def build_dataset(self):
-        return self.batch_manager.build_dataset()
-    # def build_dataset(self):
-    #     train_dataset_x = tf.data.Dataset.from_generator(self._load_image,tf.float16)
-    #     train_dataset_y = tf.data.Dataset.from_generator(self._load_label,tf.float16)
-    #     train_dataset = tf.data.Dataset.zip((train_dataset_x, train_dataset_y))
-    #     train_dataset = train_dataset.batch(self.b_num)
-    #     return train_dataset
+    @tf.function
+    def train_v_de(self, input_velocity, target_velocity, step):
+        with self.summary_writer.as_default():
+            with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+                generated_velocity = self.generator(target_velocity, training=True)
+                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, input_velocity)
+
+            generator_gradients = gen_tape.gradient(gen_loss,
+                                                        self.generator.trainable_variables)
+
+
+            self._generator_optimizer.apply_gradients(zip(generator_gradients,
+                                                        self.generator.trainable_variables))
+
+            tf.summary.scalar('loss/generation_loss', gen_loss, step=step)
+            tf.summary.scalar('loss/velocity_loss', velocity_loss, step=step)
+            tf.summary.scalar('loss/gradient_loss', gradient_loss, step=step)
+
+    @tf.function
+    def train_v_gan(self, input_velocity, target_velocity, step):
+        with self.summary_writer.as_default():
+            with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+                generated_velocity = self.generator(target_velocity, training=True)
+                input_gradient, input_vort = jacobian(input_velocity)
+                generated_gradient, generated_vort = jacobian(generated_velocity)
+                disc_real_output = self.discriminator(tf.concat([input_velocity, input_vort],axis=-1),training=True)
+                disc_generated_output = self.discriminator(tf.concat([generated_velocity, generated_vort],axis=-1),training=True)
+
+                disc_loss,real_loss, fake_loss = self._discriminator_loss(disc_real_output,disc_generated_output)
+                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, input_velocity)
+
+            generator_gradients = gen_tape.gradient(gen_loss,
+                                                        self.generator.trainable_variables)
+            discriminator_gradients = disc_tape.gradient(disc_loss,
+                                                        self.discriminator.trainable_variables)
+
+            self._generator_optimizer.apply_gradients(zip(generator_gradients,
+                                                        self.generator.trainable_variables))
+            self._discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
+                                                        self.discriminator.trainable_variables))
+
+            tf.summary.scalar('loss/generation_loss', gen_loss, step=step)
+            tf.summary.scalar('loss/velocity_loss', velocity_loss, step=step)
+            tf.summary.scalar('loss/gradient_loss', gradient_loss, step=step)
+            tf.summary.scalar('loss/real_loss', real_loss, step=step)
+            tf.summary.scalar('loss/fake_loss', fake_loss, step=step)
         
-    # def _load_image(self):
-    #     file_list = os.listdir(self.dataset + '/v')
-    #     for f in file_list:
-    #         if f.endswith('npz'):
-    #             with np.load(self.dataset + '/v/' + f) as data:
-    #                 x = data["x"] / self.x_range
-    #                 yield data["x"]
-        
-    # def _load_label(self):
-    #     file_list = os.listdir(self.dataset + '/v')
-    #     for f in file_list:
-    #         if f.endswith('npz'):
-    #             with np.load(self.dataset + '/v/' + f) as data:
-    #                 yield data["y"]
+
+    def build_dataset_train(self):
+        return self.batch_manager.build_dataset_velocity()
+
 
     def _discriminator_loss(self, disc_real_output, disc_generated_output):
-        real_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_real_output), disc_real_output, from_logits=True)
-        fake_loss = keras.losses.binary_crossentropy(tf.zeros_like(disc_generated_output), disc_generated_output, from_logits=True)
+        real_loss = keras.losses.binary_crossentropy(tf.ones_like(
+            disc_real_output), disc_real_output, from_logits=True)
+        fake_loss = keras.losses.binary_crossentropy(tf.zeros_like(
+            disc_generated_output), disc_generated_output, from_logits=True)
         total_loss = real_loss + fake_loss
-        return total_loss
-    
+        return total_loss, real_loss, fake_loss
+
     def _generator_loss(self, generated_velocity, real_velocity, disc_generated_output=None):
-        velocity_loss = tf.reduce_mean(tf.abs(generated_velocity-real_velocity))
+        velocity_loss = tf.reduce_mean(
+            tf.abs(generated_velocity-real_velocity))
         generated_gradient, _ = jacobian(generated_velocity)
         real_gradient, _ = jacobian(real_velocity)
-        gradient_loss = tf.reduce_mean(tf.abs(generated_gradient - real_gradient))
+        gradient_loss = tf.reduce_mean(
+            tf.abs(generated_gradient - real_gradient))
         total_loss = self.w1 * velocity_loss + self.w2 * gradient_loss
-        gan_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_generated_output), disc_generated_output, from_logits=True)
-        total_loss += self.w3 * gan_loss
-        return total_loss
+        # gan_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_generated_output), disc_generated_output, from_logits=True)
+        # total_loss += self.w3 * gan_loss
+        return total_loss, velocity_loss, gradient_loss
+
+    def generate_and_save(self, generate_input, file_name):
+        generate_velocity = self.generator(generate_input, training=False)
+        generate_velocity = denorm_img(generate_velocity)
+        build_image_from_tensor(generate_velocity.numpy(),
+                                self.model_dir, file_name)
+
+    def validate(self, step, standard_velocity, generation_input):
+        with self.summary_writer.as_default():
+            generated_velocity = self.generator(generation_input, training=False)
+            loss,_,_ = self._generator_loss(generated_velocity, standard_velocity)
+            print(loss.numpy())
+            build_image_from_tensor(denorm_img(
+                        generated_velocity).numpy(), self.model_dir, step + 1)
+            _, generated_vort = jacobian(generated_velocity)
+            tf.summary.scalar('loss/validate', loss, step=step)
+            tf.summary.image('vort', denorm_img(generated_velocity),step=step)
 
 def main():
     config, _ = get_config()
     batch_manager = BatchManager(config)
     train = Trainer(config, batch_manager)
-    train.fit()
+    train.fit_v_de()
 
 
 if __name__ == '__main__':
