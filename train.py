@@ -167,9 +167,9 @@ class Trainer(object):
             self._generator_optimizer.apply_gradients(zip(generator_gradients,
                                                         self.generator.trainable_variables))
 
-            tf.summary.scalar('loss/generation_loss', gen_loss, step=step)
-            tf.summary.scalar('loss/velocity_loss', velocity_loss, step=step)
-            tf.summary.scalar('loss/gradient_loss', gradient_loss, step=step)
+            tf.summary.scalar('train_loss/generation_loss', gen_loss, step=step)
+            tf.summary.scalar('train_loss/velocity_loss', velocity_loss, step=step)
+            tf.summary.scalar('train_loss/gradient_loss', gradient_loss, step=step)
 
     @tf.function
     def train_v_gan(self, input_velocity, target_velocity, step):
@@ -194,11 +194,11 @@ class Trainer(object):
             self._discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
                                                         self.discriminator.trainable_variables))
 
-            tf.summary.scalar('loss/generation_loss', gen_loss, step=step)
-            tf.summary.scalar('loss/velocity_loss', velocity_loss, step=step)
-            tf.summary.scalar('loss/gradient_loss', gradient_loss, step=step)
-            tf.summary.scalar('loss/real_loss', real_loss, step=step)
-            tf.summary.scalar('loss/fake_loss', fake_loss, step=step)
+            tf.summary.scalar('train_loss/generation_loss', gen_loss, step=step)
+            tf.summary.scalar('train_loss/velocity_loss', velocity_loss, step=step)
+            tf.summary.scalar('train_loss/gradient_loss', gradient_loss, step=step)
+            tf.summary.scalar('train_loss/real_loss', real_loss, step=step)
+            tf.summary.scalar('train_loss/fake_loss', fake_loss, step=step)
         
 
     def build_dataset_train(self):
@@ -239,8 +239,8 @@ class Trainer(object):
             build_image_from_tensor(denorm_img(
                         generated_velocity).numpy(), self.model_dir, step + 1)
             _, generated_vort = jacobian(generated_velocity)
-            tf.summary.scalar('loss/validate', loss, step=step)
-            tf.summary.image('vort', denorm_img(generated_velocity),step=step)
+            tf.summary.scalar('validation/loss', loss, step=step)
+            tf.summary.image('validation/vort', denorm_img(generated_velocity),step=step)
 
 def main():
     config, _ = get_config()

@@ -44,7 +44,7 @@ net_arg.add_argument('--w_size', type=int, default=5)
 # Data
 data_arg = add_argument_group('Data')
 data_arg.add_argument('--dataset', type=str, default='fire_2d')
-data_arg.add_argument('--batch_size', type=int, default=32)
+data_arg.add_argument('--batch_size', type=int, default=64)
 data_arg.add_argument('--test_batch_size', type=int, default=32)
 data_arg.add_argument('--num_worker', type=int, default=2)
 data_arg.add_argument('--data_type', type=str, default='velocity')
