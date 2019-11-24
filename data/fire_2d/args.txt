@@ -1,10 +1,9 @@
 log_dir: data/fire_2d
-num_param: 4
-path_format: %d_%d_%d_%d.npz
+num_param: 3
+path_format: %d_%d_%d.npz
 p0: src_x_pos
 p1: smoke_density
-p2: smoke_temp_diff
-p3: frames
+p2: frames
 num_src_x_pos: 5
 min_src_x_pos: 0.3
 max_src_x_pos: 0.7
@@ -12,9 +11,6 @@ src_y_pos: 0.1
 num_smoke_density: 11
 min_smoke_density: -0.101
 max_smoke_density: -0.001
-num_smoke_temp_diff: 11
-min_smoke_temp_diff: 0.1
-max_smoke_temp_diff: 1.1
 num_frames: 200
 min_frames: 0
 max_frames: 199

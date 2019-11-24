@@ -14,11 +14,10 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("--log_dir", type=str, default='data/fire_2d')
 parser.add_argument("--num_param", type=int, default=4)
-parser.add_argument("--path_format", type=str, default='%d_%d_%d_%d.npz')
+parser.add_argument("--path_format", type=str, default='%d_%d_%d.npz')
 parser.add_argument("--p0", type=str, default='src_x_pos')
 parser.add_argument("--p1", type=str, default='smoke_density')
-parser.add_argument("--p2", type=str, default='smoke_temp_diff')
-parser.add_argument("--p3", type=str, default='frames')
+parser.add_argument("--p2", type=str, default='frames')
 
 parser.add_argument("--num_src_x_pos", type=int, default=5)
 parser.add_argument("--min_src_x_pos", type=float, default=0.3)
@@ -31,9 +30,6 @@ parser.add_argument("--num_smoke_density", type=int, default=11)
 parser.add_argument("--min_smoke_density", type=int, default=-0.101)
 parser.add_argument("--max_smoke_density", type=int, default=-0.001)
 
-parser.add_argument("--num_smoke_temp_diff", type=int, default=11)
-parser.add_argument("--min_smoke_temp_diff", type=int, default=0.1)
-parser.add_argument("--max_smoke_temp_diff", type=int, default=1.1)
 
 parser.add_argument("--num_frames", type=int, default=200)
 parser.add_argument("--min_frames", type=int, default=0)
@@ -77,15 +73,12 @@ def main():
     p2_space = np.linspace(args.min_smoke_density,
                            args.max_smoke_density,
                            args.num_smoke_density)
-    p3_space = np.linspace(args.min_smoke_temp_diff,
-                           args.max_smoke_temp_diff,
-                           args.num_smoke_temp_diff)
 
-    p_list = np.array(np.meshgrid(p1_space, p2_space,p3_space)).T.reshape(-1, 3)
+
+    p_list = np.array(np.meshgrid(p1_space, p2_space)).T.reshape(-1, 2)
     pi1_space = range(args.num_src_x_pos)
     pi2_space = range(args.num_smoke_density)
-    pi3_space = range(args.num_smoke_temp_diff)
-    pi_list = np.array(np.meshgrid(pi1_space, pi2_space, pi3_space)).T.reshape(-1, 3)
+    pi_list = np.array(np.meshgrid(pi1_space, pi2_space)).T.reshape(-1, 2)
 
     res_x = args.resolution_x
     res_y = args.resolution_y
@@ -149,7 +142,7 @@ def main():
         flame.clear()
         pressure.clear()
         
-        p0, p1, p2 = p_list[i][0], p_list[i][1], p_list[i][2]
+        p0, p1 = p_list[i][0], p_list[i][1]
 
         boxSize = vec3(res_x/8, 0.05*res_y, res_x/8)
         boxCenter = gs*vec3(p0, args.src_y_pos, 0.5)
@@ -176,7 +169,7 @@ def main():
             vorticityConfinement( vel=vel, flags=flags, strength=0.1 )
 
             addBuoyancy( flags=flags, density=density, vel=vel, gravity=(gravity*p1))
-            addBuoyancy( flags=flags, density=heat,    vel=vel, gravity=(gravity*p2))
+            addBuoyancy( flags=flags, density=heat,    vel=vel, gravity=(gravity*0.1))
 
             setWallBcs( flags=flags, vel=vel )
             solvePressure( flags=flags, vel=vel, pressure=pressure )
@@ -197,7 +190,7 @@ def main():
             # s_range = [np.minimum(s_range[0], s_.min()),
             #            np.maximum(s_range[1], s_.max())]
 
-            param_ = [p0, p1, p2, t]
+            param_ = [p0, p1, t]
             pit = tuple(pi_list[i].tolist() + [t])
             v_file_path = os.path.join(args.log_dir, 'v', args.path_format % pit)
             np.savez_compressed(v_file_path, 
