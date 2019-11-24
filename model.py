@@ -38,8 +38,6 @@ class Generator_v_de(keras.Model):
 
         self.dense = keras.layers.Dense(int(np.prod(self.x0_shape)))
 
-        # self.conv2dTransose_1 = keras.layers.Conv2DTranspose(filters, kernel_size=2, strides=1)
-        # self.conv2dTransose_2 = keras.layers.Conv2DTranspose(filters, kernel_size=2, strides=2, padding='same')
 
         self.conv2d_list = [keras.layers.Conv2D(
             self.filters, kernel_size=kernel_size, strides=1, padding='same') for _ in range(self.repeat_num*self.num_conv)]
@@ -77,3 +75,6 @@ class Generator_v_de(keras.Model):
         x = curl(x)
 
         return x
+
+class Generator_v_gan(keras.Model):
+    pass

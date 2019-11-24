@@ -136,7 +136,7 @@ class Trainer(object):
         
         for step in tqdm(range(self.max_step), ncols=70):
             target_velocity, _, generator_input = next(train_ds)
-            self.train_v_de(target_velocity, generator_input, tf.cast(step,dtype=tf.int64))
+            self.train_v_de(generator_input, target_velocity, tf.cast(step,dtype=tf.int64))
 
             if step % self.test_step == 0 or step == self.max_step - 1:
                 self.validate(tf.cast(step, tf.int64),standard_velocity,generator_input)
@@ -157,8 +157,8 @@ class Trainer(object):
     def train_v_de(self, input_velocity, target_velocity, step):
         with self.summary_writer.as_default():
             with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                generated_velocity = self.generator(target_velocity, training=True)
-                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, input_velocity)
+                generated_velocity = self.generator(input_velocity, training=True)
+                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, target_velocity)
 
             generator_gradients = gen_tape.gradient(gen_loss,
                                                         self.generator.trainable_variables)
