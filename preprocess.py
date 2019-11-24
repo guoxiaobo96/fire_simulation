@@ -60,5 +60,5 @@ def convert_data(data_file, p1_list, p2_list, frame_list):
 if __name__ == '__main__':
     p1_list = [str(i) for i in range(5)]
     p2_list = [str(i) for i in range(11)]
-    frame_list = [str(i) for i in range(199)]
+    frame_list = [str(i) for i in range(200)]
     convert_data("data/fire_2d/v", p1_list, p2_list,  frame_list)

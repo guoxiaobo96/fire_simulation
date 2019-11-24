@@ -124,33 +124,35 @@ class Trainer(object):
 
 
     def fit_v_de(self):
-        train_ds = self.build_dataset_train()
-        xi, _, _ ,zi = self.batch_manager.random_list(self.b_num)
-        standard_velocity = tf.convert_to_tensor(xi, tf.float32)
-        generator_input = tf.convert_to_tensor(zi, tf.float32)
+        with self.summary_writer.as_default():
+            train_ds = self.build_dataset_train()
+            xi, _, _ ,zi = self.batch_manager.random_list(self.b_num)
+            standard_velocity = tf.convert_to_tensor(xi, tf.float32)
+            generator_input = tf.convert_to_tensor(zi, tf.float32)
 
-        build_image_from_tensor(denorm_img(
-            standard_velocity).numpy(), self.model_dir, 'standard')
+            build_image_from_tensor(denorm_img(
+                standard_velocity).numpy(), self.model_dir, 'standard')
 
-        self.validate(tf.cast(0, tf.int64), standard_velocity, generator_input)
-        
-        for step in tqdm(range(self.max_step), ncols=70):
-            target_velocity, _, generator_input = next(train_ds)
-            self.train_v_de(generator_input, target_velocity, tf.cast(step,dtype=tf.int64))
+            self.validate(tf.cast(0, tf.int64), standard_velocity, generator_input)
+            
+            for step in tqdm(range(self.max_step), ncols=70):
+                tf_step = tf.cast(step, tf.int64)
+                target_velocity, _, generator_input = next(train_ds)
+                self.train_v_de(generator_input, target_velocity, tf.cast(step,dtype=tf.int64))
+                if step % self.test_step == 0 or step == self.max_step - 1:
+                    self.validate(tf_step,standard_velocity,generator_input)
 
-            if step % self.test_step == 0 or step == self.max_step - 1:
-                self.validate(tf.cast(step, tf.int64),standard_velocity,generator_input)
+                if self.lr_update == 'step':
+                    if step % self.lr_update_step == self.lr_update_step - 1:
+                        tf.compat.v1.assign(self.g_lr, tf.maximum(
+                            self.g_lr * 0.5, self.lr_min))
+                else:
+                    tf.compat.v1.assign(self.g_lr, self.lr_min+0.5*(self.lr_max-self.lr_min)*(tf.cos(
+                        tf.cast(step, tf.float32) * np.pi / self.max_step) + 1))
+                tf.summary.scalar('metrics/learning_rate', self.g_lr, step=tf_step)
 
-            if self.lr_update == 'step':
-                if step % self.lr_update_step == self.lr_update_step - 1:
-                    tf.compat.v1.assign(self.g_lr, tf.maximum(
-                        self.g_lr * 0.5, self.lr_min))
-            else:
-                tf.compat.v1.assign(self.g_lr, self.lr_min+0.5*(self.lr_max-self.lr_min)*(tf.cos(
-                    tf.cast(step, tf.float32)*np.pi/self.max_step)+1))
-
-            if step % self.log_step == self.log_step - 1 or step==self.max_step - 1:
-                self.checkpoint.save(file_prefix=self.checkpoint_prefix)
+                if step % self.log_step == self.log_step - 1 or step==self.max_step - 1:
+                    self.checkpoint.save(file_prefix=self.checkpoint_prefix)
 
 
     @tf.function
@@ -234,7 +236,9 @@ class Trainer(object):
     def validate(self, step, standard_velocity, generation_input):
         with self.summary_writer.as_default():
             generated_velocity = self.generator(generation_input, training=False)
-            loss,_,_ = self._generator_loss(generated_velocity, standard_velocity)
+            loss, _, _ = self._generator_loss(generated_velocity, standard_velocity)
+            # print(tf.reduce_max(tf.abs(generated_velocity)).numpy())
+            # print(tf.reduce_max(tf.abs(standard_velocity)).numpy())
             print(loss.numpy())
             build_image_from_tensor(denorm_img(
                         generated_velocity).numpy(), self.model_dir, step + 1)

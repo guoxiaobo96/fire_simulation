@@ -6,6 +6,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 from glob import glob
+from random import shuffle
 
 
 class BatchManager(object):
@@ -33,6 +34,7 @@ class BatchManager(object):
         else:
             self.paths = sorted(glob("{}/{}/*".format(self.root, config.data_type[0])))
 
+        shuffle(self.paths)
         self.num_samples = len(self.paths)
         assert(self.num_samples > 0)
         self.batch_size = config.batch_size
@@ -78,7 +80,7 @@ class BatchManager(object):
         train_dataset_para = tf.data.Dataset.from_generator(self._load_para_data, tf.float32)
         train_dataset = tf.data.Dataset.zip((train_dataset_velocity_now,train_dataset_velocity_next,train_dataset_para))
         train_dataset = train_dataset.repeat()
-        train_dataset = train_dataset.shuffle(self.num_samples)
+        # train_dataset = train_dataset.shuffle(self.num_samples)
         train_dataset = train_dataset.batch(self.batch_size)
         # train_dataset = train_dataset.prefetch(self.batch_size)
         return train_dataset.__iter__()
