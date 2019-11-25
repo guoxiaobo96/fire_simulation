@@ -21,8 +21,8 @@ def add_argument_group(name):
 # Networkdaa
 net_arg = add_argument_group('Network')
 net_arg.add_argument('--is_3d', type=str2bool, default=False)
-net_arg.add_argument('--res_x', type=int, default=52)
-net_arg.add_argument('--res_y', type=int, default=52)
+net_arg.add_argument('--res_x', type=int, default=64)
+net_arg.add_argument('--res_y', type=int, default=64)
 net_arg.add_argument('--res_z', type=int, default=32)
 net_arg.add_argument('--repeat', type=int, default=0)
 net_arg.add_argument('--filters', type=int, default=512)
@@ -31,7 +31,7 @@ net_arg.add_argument('--use_curl', type=str2bool, default=True)
 net_arg.add_argument('--w1', type=float, default=1.0, help='weight for l1')
 net_arg.add_argument('--w2', type=float, default=1.0, help='weight for jacobian')
 net_arg.add_argument('--w3', type=float, default=0.005, help='weight for discriminator')
-net_arg.add_argument('--arch', type=str, default='v_de', choices=['v_de', 'v_gan', 'ae', 'nn'],
+net_arg.add_argument('--arch', type=str, default='v_gan', choices=['v_de', 'v_gan', 'ae', 'nn'],
                      help='dec, dec+discriminator, auto-encoder, multi-layer perceptron')
 # for AE and NN
 net_arg.add_argument('--z_num', type=int, default=16)
@@ -53,7 +53,7 @@ data_arg.add_argument('--data_type', type=str, default='velocity')
 train_arg = add_argument_group('Training')
 train_arg.add_argument('--is_train', type=str2bool, default=True)
 train_arg.add_argument('--start_step', type=int, default=0)
-train_arg.add_argument('--max_epoch', type=int, default=100)
+train_arg.add_argument('--max_epoch', type=int, default=200)
 train_arg.add_argument('--lr_update_step', type=int, default=120000)
 train_arg.add_argument('--lr_max', type=float, default=0.0001)
 train_arg.add_argument('--lr_min', type=float, default=0.0000025)

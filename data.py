@@ -107,7 +107,7 @@ class BatchManager(object):
             if f.endswith('npz'):
                 with np.load(f) as data:
                     x = data["x"] / self.x_range
-                    ans.append(x)
+                    ans.append(np.pad(x,((6,6),(6,6),(0,0))))
         return np.array(ans,dtype=np.float32)  
     
     def _load_velocity_next(self):
@@ -116,7 +116,7 @@ class BatchManager(object):
             if f.endswith('npz'):
                 with np.load(f) as data:
                     y = data["y"] / self.y_range
-                    ans.append(y)
+                    ans.append(np.pad(y,((6,6),(6,6),(0,0))))
         return np.array(ans,dtype=np.float32)
     
     def _load_para_data(self):
@@ -168,11 +168,11 @@ class BatchManager(object):
             # x = np.clip((x+1)*127.5, 0, 255)
             zi = [(p/float(self.z_num[i]-1))*2-1 for i, p in enumerate(pi)] # [-1,1]
 
-            xs.append(x)
-            ys.append(y)
-            pis.append(pi)
+            xs.append(np.pad(x,((6,6),(6,6),(0,0))))
+            ys.append(np.pad(y,((6,6),(6,6),(0,0))))
+            # pis.append(pi)
             zis.append(zi)
-        return np.array(xs), pis, np.array(ys), np.array(zis)
+        return np.array(xs), np.array(ys), np.array(zis)
 
     def list_from_p(self, p_list):
         path_format = os.path.join(self.root, self.data_type[0], self.args['path_format'])

@@ -1,7 +1,7 @@
 from show_result import *
 from util import *
 from data import BatchManager
-from model import Generator_v_de, build_discriminator_v
+from model import Generator_v_de, build_discriminator_v, build_generator_v
 from config import get_config
 from tqdm import tqdm
 import glob
@@ -64,7 +64,7 @@ class Trainer(object):
         if 'v_de' in self.arch:
             self.build_model_v_de()
         elif 'v_gan' in self.arch:
-            pass
+            self.build_model_v_gan()
         elif 'ae' in self.arch:
             self.z_num = config.z_num
             self.p_num = self.batch_manager.dof
@@ -77,7 +77,6 @@ class Trainer(object):
 
         else:
             self.build_model()
-
 
     def build_model_v_de(self):
         self.generator = Generator_v_de(
@@ -98,8 +97,7 @@ class Trainer(object):
         self.summary_writer = tf.summary.create_file_writer(self.model_dir)
 
     def build_model_v_gan(self):
-        self.generator = Generator_v_de(
-            self.filters, self.output_shape, num_cov=self.num_conv, repeat_num=self.repeat_num)
+        self.generator = build_generator_v(self.output_shape,self.output_shape)
         self.discriminator = build_discriminator_v(self.filters)
 
         if self.optimizer == 'adam':
@@ -122,25 +120,38 @@ class Trainer(object):
                                               discriminator=self.discriminator)
         self.summary_writer = tf.summary.create_file_writer(self.model_dir)
 
-
-    def fit_v_de(self):
+    def fit_v(self):
         with self.summary_writer.as_default():
             train_ds = self.build_dataset_train()
-            xi, _, _ ,zi = self.batch_manager.random_list(self.b_num)
-            standard_velocity = tf.convert_to_tensor(xi, tf.float32)
-            generator_input = tf.convert_to_tensor(zi, tf.float32)
+            if 'v_de' in self.arch:
+                xi, _, zi = self.batch_manager.random_list(self.b_num)
+                standard_velocity = tf.convert_to_tensor(xi, tf.float32)
+                generator_input = tf.convert_to_tensor(zi, tf.float32)
+            elif 'v_gan' in self.arch:
+                xi,  yi, _ = self.batch_manager.random_list(self.b_num)
+                standard_velocity = tf.convert_to_tensor(yi, tf.float32)
+                generator_input = tf.convert_to_tensor(xi, tf.float32)
 
             build_image_from_tensor(denorm_img(
                 standard_velocity).numpy(), self.model_dir, 'standard')
 
-            self.validate(tf.cast(0, tf.int64), standard_velocity, generator_input)
-            
+            self.validate(tf.cast(0, tf.int64),
+                          standard_velocity, generator_input)
+
             for step in tqdm(range(self.max_step), ncols=70):
                 tf_step = tf.cast(step, tf.int64)
-                target_velocity, _, generator_input = next(train_ds)
-                self.train_v_de(generator_input, target_velocity, tf.cast(step,dtype=tf.int64))
+                if 'v_de' in self.arch:
+                    target_velocity, _, generator_input = next(train_ds)
+                    self.train_v_de(generator_input, target_velocity,
+                                    tf.cast(step, dtype=tf.int64))
+
+                elif 'v_gan' in self.arch:
+                    generator_input, target_velocity, _ = next(train_ds)
+                    self.train_v_gan(
+                        generator_input, target_velocity, tf.cast(step, dtype=tf.int64))
+
                 if step % self.test_step == 0 or step == self.max_step - 1:
-                    self.validate(tf_step,standard_velocity,generator_input)
+                    self.validate(tf_step, standard_velocity, generator_input)
 
                 if self.lr_update == 'step':
                     if step % self.lr_update_step == self.lr_update_step - 1:
@@ -149,73 +160,85 @@ class Trainer(object):
                 else:
                     tf.compat.v1.assign(self.g_lr, self.lr_min+0.5*(self.lr_max-self.lr_min)*(tf.cos(
                         tf.cast(step, tf.float32) * np.pi / self.max_step) + 1))
-                tf.summary.scalar('metrics/learning_rate', self.g_lr, step=tf_step)
+                tf.summary.scalar('metrics/learning_rate',
+                                  self.g_lr, step=tf_step)
 
-                if step % self.log_step == self.log_step - 1 or step==self.max_step - 1:
+                if step % self.log_step == self.log_step - 1 or step == self.max_step - 1:
                     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
-
 
     @tf.function
     def train_v_de(self, input_velocity, target_velocity, step):
         with self.summary_writer.as_default():
             with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                generated_velocity = self.generator(input_velocity, training=True)
-                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, target_velocity)
+                generated_velocity = self.generator(
+                    input_velocity, training=True)
+                gen_loss, velocity_loss, gradient_loss = self._generator_loss(
+                    generated_velocity, target_velocity)
 
             generator_gradients = gen_tape.gradient(gen_loss,
-                                                        self.generator.trainable_variables)
-
+                                                    self.generator.trainable_variables)
 
             self._generator_optimizer.apply_gradients(zip(generator_gradients,
-                                                        self.generator.trainable_variables))
+                                                          self.generator.trainable_variables))
 
-            tf.summary.scalar('train_loss/generation_loss', gen_loss, step=step)
-            tf.summary.scalar('train_loss/velocity_loss', velocity_loss, step=step)
-            tf.summary.scalar('train_loss/gradient_loss', gradient_loss, step=step)
+            tf.summary.scalar('train_loss/generation_loss',
+                              gen_loss, step=step)
+            tf.summary.scalar('train_loss/velocity_loss',
+                              velocity_loss, step=step)
+            tf.summary.scalar('train_loss/gradient_loss',
+                              gradient_loss, step=step)
 
-    @tf.function
+    # @tf.function
     def train_v_gan(self, input_velocity, target_velocity, step):
         with self.summary_writer.as_default():
             with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-                generated_velocity = self.generator(target_velocity, training=True)
+                generated_velocity = self.generator(
+                    target_velocity, training=True)
                 input_gradient, input_vort = jacobian(input_velocity)
-                generated_gradient, generated_vort = jacobian(generated_velocity)
-                disc_real_output = self.discriminator(tf.concat([input_velocity, input_vort],axis=-1),training=True)
-                disc_generated_output = self.discriminator(tf.concat([generated_velocity, generated_vort],axis=-1),training=True)
+                generated_gradient, generated_vort = jacobian(
+                    generated_velocity)
+                disc_real_output = self.discriminator(
+                    tf.concat([input_velocity, target_velocity], axis=-1), training=True)
+                disc_generated_output = self.discriminator(
+                    tf.concat([input_velocity, generated_velocity], axis=-1), training=True)
 
-                disc_loss,real_loss, fake_loss = self._discriminator_loss(disc_real_output,disc_generated_output)
-                gen_loss, velocity_loss, gradient_loss = self._generator_loss(generated_velocity, input_velocity)
+                disc_loss, real_loss, fake_loss = self._discriminator_loss(
+                    disc_real_output, disc_generated_output)
+                gen_loss, velocity_loss, gradient_loss = self._generator_loss(
+                    generated_velocity, input_velocity, generate_model=True)
 
             generator_gradients = gen_tape.gradient(gen_loss,
-                                                        self.generator.trainable_variables)
+                                                    self.generator.trainable_variables)
             discriminator_gradients = disc_tape.gradient(disc_loss,
-                                                        self.discriminator.trainable_variables)
+                                                         self.discriminator.trainable_variables)
 
             self._generator_optimizer.apply_gradients(zip(generator_gradients,
-                                                        self.generator.trainable_variables))
+                                                          self.generator.trainable_variables))
             self._discriminator_optimizer.apply_gradients(zip(discriminator_gradients,
-                                                        self.discriminator.trainable_variables))
+                                                              self.discriminator.trainable_variables))
 
-            tf.summary.scalar('train_loss/generation_loss', gen_loss, step=step)
-            tf.summary.scalar('train_loss/velocity_loss', velocity_loss, step=step)
-            tf.summary.scalar('train_loss/gradient_loss', gradient_loss, step=step)
+            tf.summary.scalar('train_loss/generation_loss',
+                              gen_loss, step=step)
+            tf.summary.scalar('train_loss/velocity_loss',
+                              velocity_loss, step=step)
+            tf.summary.scalar('train_loss/gradient_loss',
+                              gradient_loss, step=step)
             tf.summary.scalar('train_loss/real_loss', real_loss, step=step)
             tf.summary.scalar('train_loss/fake_loss', fake_loss, step=step)
-        
 
     def build_dataset_train(self):
         return self.batch_manager.build_dataset_velocity()
 
-
     def _discriminator_loss(self, disc_real_output, disc_generated_output):
-        real_loss = keras.losses.binary_crossentropy(tf.ones_like(
-            disc_real_output), disc_real_output, from_logits=True)
-        fake_loss = keras.losses.binary_crossentropy(tf.zeros_like(
-            disc_generated_output), disc_generated_output, from_logits=True)
+        loss_object = keras.losses.BinaryCrossentropy(from_logits=True)
+        real_loss = loss_object(tf.ones_like(
+            disc_real_output), disc_real_output)
+        fake_loss = loss_object(tf.zeros_like(
+            disc_generated_output), disc_generated_output)
         total_loss = real_loss + fake_loss
         return total_loss, real_loss, fake_loss
 
-    def _generator_loss(self, generated_velocity, real_velocity, disc_generated_output=None):
+    def _generator_loss(self, generated_velocity, real_velocity, generate_model=False):
         velocity_loss = tf.reduce_mean(
             tf.abs(generated_velocity-real_velocity))
         generated_gradient, _ = jacobian(generated_velocity)
@@ -223,8 +246,9 @@ class Trainer(object):
         gradient_loss = tf.reduce_mean(
             tf.abs(generated_gradient - real_gradient))
         total_loss = self.w1 * velocity_loss + self.w2 * gradient_loss
-        # gan_loss = keras.losses.binary_crossentropy(tf.ones_like(disc_generated_output), disc_generated_output, from_logits=True)
-        # total_loss += self.w3 * gan_loss
+        if generate_model:
+            gan_loss = keras.losses.BinaryCrossentropy(from_logits=True)(tf.ones_like(generated_velocity), generated_velocity)
+            total_loss += self.w3 * gan_loss
         return total_loss, velocity_loss, gradient_loss
 
     def generate_and_save(self, generate_input, file_name):
@@ -235,22 +259,26 @@ class Trainer(object):
 
     def validate(self, step, standard_velocity, generation_input):
         with self.summary_writer.as_default():
-            generated_velocity = self.generator(generation_input, training=False)
-            loss, _, _ = self._generator_loss(generated_velocity, standard_velocity)
+            generated_velocity = self.generator(
+                generation_input, training=False)
+            loss, _, _ = self._generator_loss(
+                generated_velocity, standard_velocity)
             # print(tf.reduce_max(tf.abs(generated_velocity)).numpy())
             # print(tf.reduce_max(tf.abs(standard_velocity)).numpy())
             print(loss.numpy())
             build_image_from_tensor(denorm_img(
-                        generated_velocity).numpy(), self.model_dir, step + 1)
+                generated_velocity).numpy(), self.model_dir, step + 1)
             _, generated_vort = jacobian(generated_velocity)
             tf.summary.scalar('validation/loss', loss, step=step)
-            tf.summary.image('validation/vort', denorm_img(generated_velocity),step=step)
+            tf.summary.image('validation/vort',
+                             denorm_img(generated_velocity), step=step)
+
 
 def main():
     config, _ = get_config()
     batch_manager = BatchManager(config)
     train = Trainer(config, batch_manager)
-    train.fit_v_de()
+    train.fit_v()
 
 
 if __name__ == '__main__':
