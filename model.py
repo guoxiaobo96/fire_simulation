@@ -116,6 +116,40 @@ def build_generator_v(input_shape, output_shape):
 
     return tf.keras.Model(inputs=inputs, outputs=x)
 
+def build_generator_i(input_shape, output_shape):
+    inputs = keras.layers.Input(shape=input_shape)
+    down_stack = [v_downsample_3D(64, 4, apply_batchnorm=False), v_downsample_3D(128, 4),v_downsample_3D(256, 4),v_downsample_3D(256, 4),v_downsample_3D(512, 4),v_downsample_3D(512, 4)]
+    up_stack = [v_upsamle(512, 4, apply_dropout=True),v_upsamle(512, 4, apply_dropout=True),v_upsamle(256, 4, apply_dropout=True),v_upsamle(256, 4),v_upsamle(128, 4),v_upsamle(64, 4)]
+    # down_stack = [v_downsample(
+    #     64, 4, apply_batchnorm=False), v_downsample(128, 4)]
+    # up_stack = [v_upsamle(512, 4, apply_dropout=True),
+    #             v_upsamle(512, 4, apply_dropout=True)]
+
+    initializer = tf.random_normal_initializer(0., 0.02)
+
+    last_conv = keras.layers.Conv2DTranspose(
+        input_shape[-1], 3, 2, padding='same', kernel_initializer=initializer, activation='tanh')
+    linear = keras.layers.Dense(int(np.prod(output_shape)))
+
+    x = inputs
+    skips = []
+    for down in down_stack:
+        x = down(x)
+        skips.append(x)
+
+    skips = reversed(skips[:-1])
+
+    for up, skip in zip(up_stack, skips):
+        x = up(x)
+        x = tf.keras.layers.Concatenate()([x, skip])
+
+    x = last_conv(x)
+    # x = linear(x)
+    x = tf.reshape(x, [-1, output_shape[0], output_shape[1], output_shape[2]])
+    x = curl(x)
+
+    return tf.keras.Model(inputs=inputs, outputs=x)
+
 
 def v_upsamle(filters, size, apply_dropout=False):
     initializer = tf.random_normal_initializer(0., 0.02)
@@ -141,10 +175,21 @@ def v_downsample(filters, size, apply_batchnorm=True):
     result.add(tf.keras.layers.LeakyReLU())
     return result
 
+def v_downsample_3D(filters, size, apply_batchnorm=True):
+    initializer = tf.random_normal_initializer(0., 0.02)
+    result = tf.keras.Sequential()
+    result.add(keras.layers.Conv3D(filters, size, strides=2, padding='same',
+                                   kernel_initializer=initializer, use_bias=False))
+    if apply_batchnorm:
+        result.add(tf.keras.layers.BatchNormalization())
+    result.add(tf.keras.layers.LeakyReLU())
+    return result
+
+
 
 if __name__ == '__main__':
-    input_shape = [52, 52, 2]
-    a = tf.ones([4, 52, 52, 2])
+    input_shape = [64, 64, 2]
+    a = tf.ones([4, 64, 64, 2])
     generator = build_generator_v(input_shape, input_shape)
     a = generator(a, training=False)
     print('test')

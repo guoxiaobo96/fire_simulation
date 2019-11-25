@@ -39,6 +39,7 @@ class Trainer(object):
 
         self.use_c = config.use_curl
         self.output_shape = [self.res_y, self.res_x, 1]
+        self.data_shape = [self.res_y, self.res_x, 2]
 
         self.optimizer = config.optimizer
         self.beta1 = config.beta1
@@ -97,7 +98,7 @@ class Trainer(object):
         self.summary_writer = tf.summary.create_file_writer(self.model_dir)
 
     def build_model_v_gan(self):
-        self.generator = build_generator_v(self.output_shape,self.output_shape)
+        self.generator = build_generator_v(self.data_shape,self.data_shape)
         self.discriminator = build_discriminator_v(self.filters)
 
         if self.optimizer == 'adam':
@@ -126,17 +127,17 @@ class Trainer(object):
             if 'v_de' in self.arch:
                 xi, _, zi = self.batch_manager.random_list(self.b_num)
                 standard_velocity = tf.convert_to_tensor(xi, tf.float32)
-                generator_input = tf.convert_to_tensor(zi, tf.float32)
+                standard_input = tf.convert_to_tensor(zi, tf.float32)
             elif 'v_gan' in self.arch:
                 xi,  yi, _ = self.batch_manager.random_list(self.b_num)
                 standard_velocity = tf.convert_to_tensor(yi, tf.float32)
-                generator_input = tf.convert_to_tensor(xi, tf.float32)
+                standard_input = tf.convert_to_tensor(xi, tf.float32)
 
             build_image_from_tensor(denorm_img(
                 standard_velocity).numpy(), self.model_dir, 'standard')
 
             self.validate(tf.cast(0, tf.int64),
-                          standard_velocity, generator_input)
+                          standard_velocity, standard_input)
 
             for step in tqdm(range(self.max_step), ncols=70):
                 tf_step = tf.cast(step, tf.int64)
@@ -151,7 +152,7 @@ class Trainer(object):
                         generator_input, target_velocity, tf.cast(step, dtype=tf.int64))
 
                 if step % self.test_step == 0 or step == self.max_step - 1:
-                    self.validate(tf_step, standard_velocity, generator_input)
+                    self.validate(tf_step, standard_velocity, standard_input)
 
                 if self.lr_update == 'step':
                     if step % self.lr_update_step == self.lr_update_step - 1:
@@ -188,7 +189,7 @@ class Trainer(object):
             tf.summary.scalar('train_loss/gradient_loss',
                               gradient_loss, step=step)
 
-    # @tf.function
+    @tf.function
     def train_v_gan(self, input_velocity, target_velocity, step):
         with self.summary_writer.as_default():
             with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
