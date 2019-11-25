@@ -29,6 +29,7 @@ class Generator_v_de(keras.Model):
             self.repeat_num = repeat_num
         else:
             self.repeat_num = int(np.log2((np.max(output_shape[:-1])))) - 2
+        assert(self.repeat_num > 0 and np.sum([i % np.power(2, self.repeat_num-1) for i in output_shape[:-1]]) == 0)
         self.num_conv = num_cov
         self.concat = concat
         self.x0_shape = [int(i / np.power(2, self.repeat_num - 1))

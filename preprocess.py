@@ -49,13 +49,14 @@ def convert_data(data_file, p1_list, p2_list, frame_list):
                 file_path = p1+"_"+p2+"_"+frame+".npz"
                 file_path = os.path.join(data_file,file_path)
                 exist_data = np.load(file_path)["x"]
+                para_data = np.load(file_path)["y"]
                 if frame == frame_list[-1]:
                     next_frame = p1 + "_" + p2 + "_"  + str(int(frame)) + ".npz"
                 else:
                     next_frame = p1 + "_" + p2 + "_" + str(int(frame)+1) + ".npz"
                 next_frame_path = os.path.join(data_file, next_frame)
                 next_frame = np.load(next_frame_path)["x"]
-                new_data = np.savez_compressed(file_path, x=exist_data, y=next_frame, z=np.array([int(p1), int(p2),int(frame)]))
+                new_data = np.savez_compressed(file_path, x=exist_data, y=next_frame, z=para_data)
                     
 if __name__ == '__main__':
     p1_list = [str(i) for i in range(5)]

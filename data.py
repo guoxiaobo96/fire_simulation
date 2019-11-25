@@ -75,14 +75,18 @@ class BatchManager(object):
         #     label_dim = [self.c_num]
         
     def build_dataset_velocity(self):
-        train_dataset_velocity_now = tf.data.Dataset.from_generator(self._load_velocity_now, tf.float32)
-        train_dataset_velocity_next = tf.data.Dataset.from_generator(self._load_velocity_next, tf.float32)
-        train_dataset_para = tf.data.Dataset.from_generator(self._load_para_data, tf.float32)
+        # train_dataset_velocity_now = tf.data.Dataset.from_generator(self._load_velocity_now, tf.float32)
+        # train_dataset_velocity_next = tf.data.Dataset.from_generator(self._load_velocity_next, tf.float32)
+        # train_dataset_para = tf.data.Dataset.from_generator(self._load_para_data, tf.float32)
+
+        train_dataset_velocity_now = tf.data.Dataset.from_tensor_slices(self._load_velocity_now())
+        train_dataset_velocity_next = tf.data.Dataset.from_tensor_slices(self._load_velocity_next())
+        train_dataset_para = tf.data.Dataset.from_tensor_slices(self._load_para_data())
         train_dataset = tf.data.Dataset.zip((train_dataset_velocity_now,train_dataset_velocity_next,train_dataset_para))
         train_dataset = train_dataset.repeat()
         # train_dataset = train_dataset.shuffle(self.num_samples)
         train_dataset = train_dataset.batch(self.batch_size)
-        # train_dataset = train_dataset.prefetch(self.batch_size)
+        train_dataset = train_dataset.prefetch(4*self.batch_size)
         return train_dataset.__iter__()
         
     
@@ -98,27 +102,33 @@ class BatchManager(object):
     #                 yield x,y,z
 
     def _load_velocity_now(self):
+        ans = []
         for f in self.paths:
             if f.endswith('npz'):
                 with np.load(f) as data:
                     x = data["x"] / self.x_range
-                    yield x
+                    ans.append(x)
+        return np.array(ans,dtype=np.float32)  
     
     def _load_velocity_next(self):
+        ans = []
         for f in self.paths:
             if f.endswith('npz'):
                 with np.load(f) as data:
                     y = data["y"] / self.y_range
-                    yield y
+                    ans.append(y)
+        return np.array(ans,dtype=np.float32)
     
     def _load_para_data(self):
+        ans = []
         for f in self.paths:
             if f.endswith('npz'):
                 with np.load(f) as data:
                     z = data["z"]
                     for i, ri in enumerate(self.z_range):
                         z[i] = (z[i] - ri[0]) / (ri[1] - ri[0]) * 2 - 1
-                    yield z
+                    ans.append(z)
+        return np.array(ans,dtype=np.float32)
                  
     def denorm(self, x=None, y=None, z=None):
         # input range [-1, 1] -> original range
