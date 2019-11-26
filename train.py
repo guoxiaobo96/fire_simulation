@@ -112,7 +112,7 @@ class Trainer(object):
                 lr=self.g_lr, beta_1=self.beta1, beta_2=self.beta2)
         else:
             raise Exception("[!] Invalid opimizer")
-
+        
         checkpoint_dir = os.path.join(self.model_dir, "checkpoint")
         self.checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
         self.checkpoint = tf.train.Checkpoint(generator_optimizer=self._generator_optimizer,
@@ -167,6 +167,20 @@ class Trainer(object):
                 if step % self.log_step == self.log_step - 1 or step == self.max_step - 1:
                     self.checkpoint.save(file_prefix=self.checkpoint_prefix)
 
+    def predict_v(self):
+        checkpoint = tf.train.Checkpoint(generator=self.generator)
+        checkpoint.restore(tf.train.latest_checkpoint(os.path.join(self.model_dir, "checkpoint")))
+        dataset = self.build_dataset_train(4, 9)
+        target_path = "4_9/4_9"
+        prev_frame = None
+        for i, x in enumerate(dataset):
+            path = target_path + "_" + str(i)
+            if i==0:
+                generator_input = tf.cast(np.array([x]), dtype=tf.float32)
+            else:
+                generator_input = prev_frame
+            prev_frame = self.generate_and_save(generator_input, path, return_label=True)
+
     @tf.function
     def train_v_de(self, input_velocity, target_velocity, step):
         with self.summary_writer.as_default():
@@ -194,7 +208,7 @@ class Trainer(object):
         with self.summary_writer.as_default():
             with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
                 generated_velocity = self.generator(
-                    target_velocity, training=True)
+                    input_velocity, training=True)
                 input_gradient, input_vort = jacobian(input_velocity)
                 generated_gradient, generated_vort = jacobian(
                     generated_velocity)
@@ -227,8 +241,11 @@ class Trainer(object):
             tf.summary.scalar('train_loss/real_loss', real_loss, step=step)
             tf.summary.scalar('train_loss/fake_loss', fake_loss, step=step)
 
-    def build_dataset_train(self):
-        return self.batch_manager.build_dataset_velocity()
+    def build_dataset_train(self,p1=None, p2=None):
+        if self.is_train==True:
+            return self.batch_manager.build_dataset_velocity()
+        else:
+            return self.batch_manager.provide_predict(p1, p2)
 
     def _discriminator_loss(self, disc_real_output, disc_generated_output):
         loss_object = keras.losses.BinaryCrossentropy(from_logits=True)
@@ -252,11 +269,13 @@ class Trainer(object):
             total_loss += self.w3 * gan_loss
         return total_loss, velocity_loss, gradient_loss
 
-    def generate_and_save(self, generate_input, file_name):
-        generate_velocity = self.generator(generate_input, training=False)
-        generate_velocity = denorm_img(generate_velocity)
+    def generate_and_save(self, generate_input, file_name, return_label=False):
+        generate_velocity_ = self.generator(generate_input, training=False)
+        generate_velocity = denorm_img(generate_velocity_)
         build_image_from_tensor(generate_velocity.numpy(),
                                 self.model_dir, file_name)
+        if return_label:
+            return generate_velocity_
 
     def validate(self, step, standard_velocity, generation_input):
         with self.summary_writer.as_default():
@@ -279,7 +298,10 @@ def main():
     config, _ = get_config()
     batch_manager = BatchManager(config)
     train = Trainer(config, batch_manager)
-    train.fit_v()
+    if train.is_train==True:
+        train.fit_v()
+    else:
+        train.predict_v()
 
 
 if __name__ == '__main__':

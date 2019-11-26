@@ -181,6 +181,15 @@ class BatchManager(object):
             filelist.append(path_format % tuple(p))
         return filelist
 
+    def provide_predict(self, p1, p2):
+        source_list=[]
+        file_prefix = os.path.join(self.root,"v/"+str(p1)+"_"+str(p2)+"_")
+        file_list = [file_prefix + str(frame) for frame in range(200)]
+        for file_name in file_list:
+            data = np.load(file_name+".npz")["x"] / self.x_range
+            source_list.append(np.pad(data,((6,6),(6,6),(0,0))))
+        return source_list
+
 def preprocess(file_path, data_type, x_range, y_range,z_range):    
     with np.load(file_path) as data:
         x = data['x']
