@@ -31,8 +31,7 @@ net_arg.add_argument('--use_curl', type=str2bool, default=True)
 net_arg.add_argument('--w1', type=float, default=1.0, help='weight for l1')
 net_arg.add_argument('--w2', type=float, default=1.0, help='weight for jacobian')
 net_arg.add_argument('--w3', type=float, default=0.005, help='weight for discriminator')
-net_arg.add_argument('--arch', type=str, default='v_gan', choices=['v_de', 'v_gan', 'ae', 'nn'],
-                     help='dec, dec+discriminator, auto-encoder, multi-layer perceptron')
+net_arg.add_argument('--arch', type=str, default='v_gan', choices=['v_de', 'v_gan'])
 # for AE and NN
 net_arg.add_argument('--z_num', type=int, default=16)
 net_arg.add_argument('--use_sparse', type=str2bool, default=False)
@@ -51,7 +50,7 @@ data_arg.add_argument('--data_type', type=str, default='velocity')
 
 # Training / test parameters
 train_arg = add_argument_group('Training')
-train_arg.add_argument('--is_train', type=str2bool, default=False)
+train_arg.add_argument('--is_train', type=str2bool, default=True)
 train_arg.add_argument('--start_step', type=int, default=0)
 train_arg.add_argument('--max_epoch', type=int, default=200)
 train_arg.add_argument('--lr_update_step', type=int, default=120000)
